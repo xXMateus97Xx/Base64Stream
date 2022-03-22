@@ -55,3 +55,11 @@ while ((read = stream.Read(bytes, 0, bytes.Length) > 0)
 }
 
 ```
+
+# Comments
+
+Base64Stream throws exception at constructor when string is null or empty or length is not multiple of 4.
+
+Read method throws exception if buffer length is less than 3 or if there are some invalid character on string.
+
+Thread safety is not guaranteed.
