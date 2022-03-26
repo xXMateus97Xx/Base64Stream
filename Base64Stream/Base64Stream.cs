@@ -28,6 +28,7 @@ namespace Base64Stream
         };
 
         private readonly string _base64;
+        private readonly long _numberOfPaddingCharacters;
         private int _charPosition;
 
         public Base64Stream(string base64)
@@ -50,6 +51,7 @@ namespace Base64Stream
                 numberOfPaddingCharacters = 1;
 
             _length = (3L * (base64.Length / 4L)) - numberOfPaddingCharacters;
+            _numberOfPaddingCharacters = numberOfPaddingCharacters;
         }
 
         public override bool CanRead => true;
@@ -97,48 +99,82 @@ namespace Base64Stream
             if (nearestMultiple == 0)
                 throw new ArgumentException("buffer size is less then 3");
 
-            for (; i < nearestMultiple && _position < _length; _charPosition += 4, i += 3, _position += 3)
-            {
-                var c = Unsafe.Add(ref srcChars, _charPosition);
-                var c2 = Unsafe.Add(ref srcChars, _charPosition + 1);
-                var c3 = Unsafe.Add(ref srcChars, _charPosition + 2);
-                var c4 = Unsafe.Add(ref srcChars, _charPosition + 3);
+            for (; i < nearestMultiple && _position + 3 < _length; _charPosition += 4, i += 3, _position += 3)
+                DecodeQuartet(ref srcChars, ref dstbytes, ref decodingMap, i);
 
-                if (((c | c2 | c3 | c4) & 0xffffff00) != 0)
-                    throw new FormatException("Invalid character on Base64 string");
-
-                var b = Unsafe.Add(ref decodingMap, c);
-                var b2 = Unsafe.Add(ref decodingMap, c2);
-                var b3 = Unsafe.Add(ref decodingMap, c3);
-                var b4 = Unsafe.Add(ref decodingMap, c4);
-
-                var r = (byte)(((b << 2) & 0xFF) | (b2 >> 4));
-                Unsafe.Add(ref dstbytes, i) = r;
-
-                if (b3 != -1)
-                {
-                    var r2 = (byte)(((b2 << 4) & 0xFF) | (b3 >> 2));
-                    Unsafe.Add(ref dstbytes, i + 1) = r2;
-
-                    if (b4 != -1)
-                    {
-                        var r3 = (byte)(((b3 << 6) & 0xFF) | (byte)b4);
-                        Unsafe.Add(ref dstbytes, i + 2) = r3;
-                    }
-                    else
-                    {
-                        i -= 1;
-                        _position -= 1;
-                    }
-                }
-                else
-                {
-                    i -= 2;
-                    _position -= 2;
-                }
-            }
+            var remaining = _length - _position;
+            if (remaining <= 3 && remaining > 0 && i < nearestMultiple)
+                i += DecodeLastQuartet(ref srcChars, ref dstbytes, ref decodingMap, i);
 
             return i;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DecodeQuartet(ref char srcChars, ref byte dstbytes, ref sbyte decodingMap, int i)
+        {
+            var c = Unsafe.Add(ref srcChars, _charPosition);
+            var c2 = Unsafe.Add(ref srcChars, _charPosition + 1);
+            var c3 = Unsafe.Add(ref srcChars, _charPosition + 2);
+            var c4 = Unsafe.Add(ref srcChars, _charPosition + 3);
+
+            if (((c | c2 | c3 | c4) & 0xffffff00) != 0)
+                throw new FormatException("Invalid character on Base64 string");
+
+            var b = Unsafe.Add(ref decodingMap, c);
+            var b2 = Unsafe.Add(ref decodingMap, c2);
+            var b3 = Unsafe.Add(ref decodingMap, c3);
+            var b4 = Unsafe.Add(ref decodingMap, c4);
+
+            var r = (byte)(((b << 2) & 0xFF) | (b2 >> 4));
+            var r2 = (byte)(((b2 << 4) & 0xFF) | (b3 >> 2));
+            var r3 = (byte)(((b3 << 6) & 0xFF) | (byte)b4);
+
+            Unsafe.Add(ref dstbytes, i) = r;
+            Unsafe.Add(ref dstbytes, i + 1) = r2;
+            Unsafe.Add(ref dstbytes, i + 2) = r3;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int DecodeLastQuartet(ref char srcChars, ref byte dstbytes, ref sbyte decodingMap, int i)
+        {
+            var c = Unsafe.Add(ref srcChars, _charPosition);
+            var c2 = Unsafe.Add(ref srcChars, _charPosition + 1);
+            var c3 = Unsafe.Add(ref srcChars, _charPosition + 2);
+            var c4 = Unsafe.Add(ref srcChars, _charPosition + 3);
+
+            if (((c | c2 | c3 | c4) & 0xffffff00) != 0)
+                throw new FormatException("Invalid character on Base64 string");
+
+            _charPosition += 4;
+
+            var b = Unsafe.Add(ref decodingMap, c);
+            var b2 = Unsafe.Add(ref decodingMap, c2);
+
+            var r = (byte)(((b << 2) & 0xFF) | (b2 >> 4));
+
+            Unsafe.Add(ref dstbytes, i) = r;
+
+            if (_numberOfPaddingCharacters <= 1)
+            {
+                var b3 = Unsafe.Add(ref decodingMap, c3);
+                var r2 = (byte)(((b2 << 4) & 0xFF) | (b3 >> 2));
+                Unsafe.Add(ref dstbytes, i + 1) = r2;
+
+                if (_numberOfPaddingCharacters == 0)
+                {
+                    var b4 = Unsafe.Add(ref decodingMap, c4);
+                    var r3 = (byte)(((b3 << 6) & 0xFF) | (byte)b4);
+                    Unsafe.Add(ref dstbytes, i + 2) = r3;
+                    _position += 3;
+                    return 3;
+                }
+
+                _position += 2;
+                return 2;
+            }
+
+            _position += 1;
+            return 1;
         }
 
         public override void Write(ReadOnlySpan<byte> buffer)
