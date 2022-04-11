@@ -29,6 +29,7 @@ namespace Base64Stream
 
         private readonly string _base64;
         private readonly long _numberOfPaddingCharacters;
+        private readonly int _initialCharPosition;
         private int _charPosition;
 
         public Base64Stream(string base64)
@@ -36,21 +37,53 @@ namespace Base64Stream
             if (string.IsNullOrWhiteSpace(base64))
                 throw new ArgumentNullException(nameof(base64));
 
-            if (base64.Length % 4 != 0)
+            var strSpan = base64.AsSpan();
+            var trimmed = strSpan.Trim();
+
+            if (trimmed.Length % 4 != 0)
                 throw new FormatException("String is not a valid base64");
 
             _base64 = base64;
 
-            var strSpan = base64.AsSpan();
-            ref char srcChars = ref MemoryMarshal.GetReference(strSpan);
+            ref char srcChars = ref MemoryMarshal.GetReference(trimmed);
+
+            _initialCharPosition = _charPosition = strSpan.IndexOf(trimmed[0]);
 
             var numberOfPaddingCharacters = 0L;
-            if (Unsafe.Add(ref srcChars, base64.Length - 2) == '=')
+            if (Unsafe.Add(ref srcChars, trimmed.Length - 2) == '=')
                 numberOfPaddingCharacters = 2;
-            else if (Unsafe.Add(ref srcChars, base64.Length - 1) == '=')
+            else if (Unsafe.Add(ref srcChars, trimmed.Length - 1) == '=')
                 numberOfPaddingCharacters = 1;
 
-            _length = (3L * (base64.Length / 4L)) - numberOfPaddingCharacters;
+            _length = (3L * (trimmed.Length / 4L)) - numberOfPaddingCharacters;
+            _numberOfPaddingCharacters = numberOfPaddingCharacters;
+        }
+
+        public Base64Stream(string base64, int initialPosition)
+        {
+            if (string.IsNullOrWhiteSpace(base64))
+                throw new ArgumentNullException(nameof(base64));
+
+            var strSpan = base64.AsSpan();
+            var sliced = strSpan.Slice(initialPosition);
+            var trimmed = sliced.Trim();
+
+            if (trimmed.Length % 4 != 0)
+                throw new FormatException("String is not a valid base64");
+
+            _base64 = base64;
+
+            ref char srcChars = ref MemoryMarshal.GetReference(trimmed);
+
+            _initialCharPosition = _charPosition = base64.IndexOf(trimmed[0], initialPosition);
+
+            var numberOfPaddingCharacters = 0L;
+            if (Unsafe.Add(ref srcChars, trimmed.Length - 2) == '=')
+                numberOfPaddingCharacters = 2;
+            else if (Unsafe.Add(ref srcChars, trimmed.Length - 1) == '=')
+                numberOfPaddingCharacters = 1;
+
+            _length = (3L * (trimmed.Length / 4L)) - numberOfPaddingCharacters;
             _numberOfPaddingCharacters = numberOfPaddingCharacters;
         }
 
@@ -73,7 +106,7 @@ namespace Base64Stream
                     throw new NotSupportedException();
 
                 _position = 0;
-                _charPosition = 0;
+                _charPosition = _initialCharPosition;
             }
         }
 

@@ -93,6 +93,107 @@ namespace Base64Stream.Tests
         }
 
         [Fact]
+        public void Base64Stream_1ByteTrimNeeded_Success()
+        {
+            var str = "  1  ";
+            var base64 = $"  {Convert.ToBase64String(Encoding.UTF8.GetBytes(str))}  ";
+
+            var stream = new Base64Stream(base64);
+
+            var reader = new StreamReader(stream);
+
+            var result = reader.ReadToEnd();
+
+            Assert.Equal(str, result);
+            Assert.Equal(stream.Length, stream.Position);
+        }
+
+        [Fact]
+        public void Base64Stream_2BytesTrimNeeded_Success()
+        {
+            var str = "  12  \n";
+            var base64 = $"  {Convert.ToBase64String(Encoding.UTF8.GetBytes(str))}  \n";
+
+            var stream = new Base64Stream(base64);
+
+            var reader = new StreamReader(stream);
+
+            var result = reader.ReadToEnd();
+
+            Assert.Equal(str, result);
+            Assert.Equal(stream.Length, stream.Position);
+        }
+
+        [Fact]
+        public void Base64Stream_3BytesTrimNeeded_Success()
+        {
+            var str = "\n 123  ";
+            var base64 = $"\n {Convert.ToBase64String(Encoding.UTF8.GetBytes(str))}  ";
+
+            var stream = new Base64Stream(base64);
+
+            var reader = new StreamReader(stream);
+
+            var result = reader.ReadToEnd();
+
+            Assert.Equal(str, result);
+            Assert.Equal(stream.Length, stream.Position);
+        }
+
+        [Fact]
+        public void Base64Stream_4BytesTrimNeeded_Success()
+        {
+            var str = "  1234  \r\n";
+            var base64 = $"  {Convert.ToBase64String(Encoding.UTF8.GetBytes(str))} \r\n";
+
+            var stream = new Base64Stream(base64);
+
+            var reader = new StreamReader(stream);
+
+            var result = reader.ReadToEnd();
+
+            Assert.Equal(str, result);
+            Assert.Equal(stream.Length, stream.Position);
+        }
+
+        [Fact]
+        public void Base64Stream_MultipleReadsTrimNeeded_Success()
+        {
+            var str = "12345678";
+            var base64 = $"\r\n{Convert.ToBase64String(Encoding.UTF8.GetBytes(str))}\r\n";
+
+            var stream = new Base64Stream(base64);
+
+            var arr = new byte[9];
+            int i = 0, j = 3;
+            while (i < str.Length)
+            {
+                i += stream.Read(arr, i, j);
+            }
+
+            var result = Encoding.UTF8.GetString(arr.AsSpan().TrimEnd((byte)0));
+
+            Assert.Equal(str, result);
+            Assert.Equal(stream.Length, stream.Position);
+        }
+
+        [Fact]
+        public void Base64Stream_SetInitialPosition_Success()
+        {
+            var str = "Test text";
+            var base64 = $"data:text/plain;base64,{Convert.ToBase64String(Encoding.UTF8.GetBytes(str))}  ";
+
+            var stream = new Base64Stream(base64, base64.IndexOf(',') + 1);
+
+            var reader = new StreamReader(stream);
+
+            var result = reader.ReadToEnd();
+
+            Assert.Equal(str, result);
+            Assert.Equal(stream.Length, stream.Position);
+        }
+
+        [Fact]
         public void Base64Stream_BigString_Success()
         {
             var bytes = File.ReadAllBytes("hamlet.txt");
